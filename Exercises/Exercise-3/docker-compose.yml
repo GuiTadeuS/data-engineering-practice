@@ -1,12 +1,16 @@
-version: "3.9"
 services:
   test:
-    image: "exercise-3"
+    container_name: test-3
+    build: .
     volumes:
       - .:/app
-    command: python3 -m pytest
-  run:
-    image: "exercise-3"
+    command: pytest -s -v
+  app:
+    container_name: app-3
+    build: .
     volumes:
       - .:/app
+      - ${USERPROFILE}/.aws:/root/.aws
+    depends_on:
+      - test
     command: python3 main.py
