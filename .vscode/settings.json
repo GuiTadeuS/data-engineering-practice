@@ -1,0 +1,12 @@
+{
+    "files.exclude": {
+        "**/Thumbs.db": true,
+        "**/__pycache__": true,
+        "**/.pytest_cache": true
+    },
+    "python.testing.pytestArgs": [
+        "Exercises"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true
+}
