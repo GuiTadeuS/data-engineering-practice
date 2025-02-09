@@ -1,21 +1,40 @@
+import logging
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from zipfile import ZipFile
 from pyspark.sql import SparkSession
-import logging
+from pyspark.sql.types import (StructType,
+                               StructField,
+                               StringType,
+                               TimestampType)
+
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s - %(levelname)s - %(message)s")
+
+
+schema = StructType([
+    StructField("trip_id", StringType()),
+    StructField("start_time", TimestampType()),
+    StructField("end_time", TimestampType()),
+    StructField("bikeid", StringType()),
+    StructField("tripduration", StringType()),
+    StructField("from_station_id", StringType()),
+    StructField("from_station_name", StringType()),
+    StructField("to_station_id", StringType()),
+    StructField("to_station_name", StringType()),
+    StructField("usertype", StringType()),
+    StructField("gender", StringType()),
+    StructField("birthyear", StringType()),
+])
 
 
 def process_csv(zip_file: ZipFile, filename, spark: SparkSession):
     with TemporaryDirectory() as tempdir:
         csv_path = zip_file.extract(filename, path=tempdir)
         try:
-            df = spark.read.csv(csv_path, header=True, inferSchema=True)
+            df = spark.read.csv(csv_path, header=True, schema=schema)
             logging.info("Successfully created DataFrame")
-            logging.info("Showing DataFrame head data")
-            logging.info(df.head(2))
             return df
         except Exception as e:
             logging.error(f"Failed to create DataFrame with {csv_path}: {e}")
@@ -23,7 +42,11 @@ def process_csv(zip_file: ZipFile, filename, spark: SparkSession):
 
 def main():
     logging.info("Start")
-    spark = SparkSession.builder.appName("Exercise6").enableHiveSupport().getOrCreate()
+    spark = SparkSession \
+        .builder \
+        .appName("Exercise6") \
+        .enableHiveSupport() \
+        .getOrCreate()
 
     data_directory = Path(__file__).parent / "data"
     zips = [str(file) for file in data_directory.rglob("*.zip")]
