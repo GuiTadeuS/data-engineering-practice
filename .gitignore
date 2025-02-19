@@ -4,4 +4,4 @@
 venv
 downloads
 __pycache__
-*/result/*.csv
+Exercises/Exercise-6/reports/*.csv
