@@ -40,3 +40,14 @@ should be output as a report in `.csv` format in a `reports` folder.
 Note: Your `PySpark` code should be encapsulated inside functions or methods.
 
 Extra Credit: Unit test your PySpark code.
+
+
+Taking notes:
+
+combined_df.groupBy("day") \
+   .agg(
+      count("*").alias("trip_count"),
+      avg("duration").alias("avg_duration")
+      max("distance").alias("max_distance")
+   ) \
+   .orderBy("day")

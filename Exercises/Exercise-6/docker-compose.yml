@@ -1,12 +1,12 @@
 services:
   test:
-    container_name: test-5
+    container_name: test-6
     build: .
     volumes:
       - .:/app
     command: pytest -s -v
   app:
-    container_name: app-5
+    container_name: app-6
     build: .
     volumes:
       - .:/app

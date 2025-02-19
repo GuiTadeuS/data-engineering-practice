@@ -18,21 +18,66 @@ logging.basicConfig(level=logging.INFO,
 REPORTS_DIRECTORY = str(Path(__file__).parent / "reports")
 
 
-def get_df_csv_from_zip(zip_file: ZipFile, filename, spark: SparkSession):
-    with TemporaryDirectory() as tempdir:
-        csv_path = zip_file.extract(filename, path=tempdir)
-        try:
-            df = spark.read.csv(csv_path, header=True, inferSchema=True)
-            df.cache()
-            df.count()
-            logging.info("Successfully created DataFrame")
-            return df
-        except Exception as e:
-            logging.error(f"Failed to create DataFrame with {csv_path}: {e}")
+def trips_per_day(dfs: List[DataFrame]) -> DataFrame:
+    if not dfs:
+        logging.error("No dataframes found")
+        return
+
+    combined_df = None
+
+    for df in dfs:
+        if "start_time" in df.columns:
+            df = df.withColumnRenamed("start_time", "started_at")
+
+        df = df.withColumn("date", to_date(col("started_at")))
+        df = df.select("date")
+
+    if combined_df is None:
+        combined_df = df
+    else:
+        combined_df = combined_df.union(df)
+
+    return combined_df.groupBy("date") \
+        .count() \
+        .withColumnRenamed("count", "trip_count")
+
+
+def average_trip_duration(dfs: List[DataFrame]) -> DataFrame:
+    if not dfs:
+        logging.error("No dataframes found")
+        return
+
+    combined_df = None
+
+    for df in dfs:
+        if "start_time" in df.columns:
+            df = df.withColumnRenamed("start_time", "started_at")
+            df = df.withColumnRenamed("from_station_name",
+                                      "start_station_name")
+            df = df.withColumnRenamed("end_time", "ended_at")
+
+        df = df.withColumn("day",
+                           to_date(col("started_at")))
+        df = df.withColumn(
+            "trip_duration",
+            (unix_timestamp("ended_at") - unix_timestamp("started_at"))
+        )
+
+        df = df.select("day", "trip_duration")
+
+        if combined_df is None:
+            combined_df = df
+        else:
+            combined_df = combined_df.union(df)
+
+    return combined_df.groupBy("day") \
+        .agg(avg(col("trip_duration"))) \
+        .orderBy("day")
 
 
 def process_dataframes(dfs: List[DataFrame]):
     output_report(dfs, average_trip_duration)
+    output_report(dfs, trips_per_day)
 
 
 def output_report(dfs: List[DataFrame], processment_function: Callable):
@@ -73,36 +118,17 @@ def output_report(dfs: List[DataFrame], processment_function: Callable):
         logging.error("The resulting DataFrame is empty or invalid.")
 
 
-def average_trip_duration(dfs: List[DataFrame]):
-    if not dfs:
-        logging.error("No dataframes found")
-        return
-
-    combined_df = None
-
-    for df in dfs:
-        if "start_time" in df.columns:
-            df = df.withColumnRenamed("start_time", "started_at")
-            df = df.withColumnRenamed("from_station_name",
-                                      "start_station_name")
-            df = df.withColumnRenamed("end_time", "ended_at")
-
-        df = df.withColumn("day",
-                           to_date(col("started_at")))
-        df = df.withColumn(
-            "trip_duration",
-            (unix_timestamp("ended_at") - unix_timestamp("started_at"))
-        )
-        df = df.select("day", "trip_duration")
-
-        if combined_df is None:
-            combined_df = df
-        else:
-            combined_df = combined_df.union(df)
-
-    return combined_df.groupBy("day") \
-        .agg(avg(col("trip_duration"))) \
-        .orderBy("day")
+def get_df_csv_from_zip(zip_file: ZipFile, filename, spark: SparkSession):
+    with TemporaryDirectory() as tempdir:
+        csv_path = zip_file.extract(filename, path=tempdir)
+        try:
+            df = spark.read.csv(csv_path, header=True, inferSchema=True)
+            df.cache()
+            df.count()
+            logging.info("Successfully created DataFrame")
+            return df
+        except Exception as e:
+            logging.error(f"Failed to create DataFrame with {csv_path}: {e}")
 
 
 def main():
@@ -122,8 +148,11 @@ def main():
     for zip_file in zips:
         with ZipFile(zip_file) as zip_file:
             zipinfo = zip_file.infolist()
+
             for file_info in zipinfo:
-                if file_info.filename.endswith(".csv") and "__MACOSX" not in file_info.filename:
+                if (file_info.filename.endswith(".csv") and
+                   "__MACOSX" not in file_info.filename):
+
                     dfs.append(get_df_csv_from_zip(zip_file,
                                                    file_info.filename,
                                                    spark))
