@@ -42,20 +42,17 @@ def top_station_by_day(dfs: List[DataFrame]) -> DataFrame:
 
         df = df.filter(col("date") > date_sub(current_date(), 14))
 
-    if combined_df is None:
-        combined_df = df
-    else:
-        combined_df = combined_df.union(df)
+        combined_df = df if combined_df is None else combined_df.union(df)
 
-    df.groupBy("date", "end_station_name") \
+    combined_df = combined_df.groupBy("date", "end_station_name") \
         .count() \
         .withColumnRenamed("count", "trip_count")
 
     window_spec = Window.partitionBy("date").orderBy(desc("trip_count"))
-    ranked_df = df.withColumn("station_rank", row_number().over(window_spec))
-    df = ranked_df.filter(col("station_rank") <= 3)
 
-    return df
+    return combined_df \
+        .withColumn("station_rank", row_number().over(window_spec)) \
+        .filter(col("station_rank") <= 3)
 
 
 def popular_month_destination(dfs: List[DataFrame]) -> DataFrame:
@@ -74,10 +71,7 @@ def popular_month_destination(dfs: List[DataFrame]) -> DataFrame:
                            month(to_date(col("started_at"))))
         df = df.select("month", "end_station_name")
 
-    if combined_df is None:
-        combined_df = df
-    else:
-        combined_df = combined_df.union(df)
+        combined_df = df if combined_df is None else combined_df.union(df)
 
     return combined_df.groupBy("month", "end_station_name") \
         .count() \
@@ -98,10 +92,7 @@ def trips_per_day(dfs: List[DataFrame]) -> DataFrame:
         df = df.withColumn("date", to_date(col("started_at")))
         df = df.select("date")
 
-    if combined_df is None:
-        combined_df = df
-    else:
-        combined_df = combined_df.union(df)
+        combined_df = df if combined_df is None else combined_df.union(df)
 
     return combined_df.groupBy("date") \
         .count() \
@@ -131,10 +122,7 @@ def average_trip_duration(dfs: List[DataFrame]) -> DataFrame:
 
         df = df.select("day", "trip_duration")
 
-        if combined_df is None:
-            combined_df = df
-        else:
-            combined_df = combined_df.union(df)
+        combined_df = df if combined_df is None else combined_df.union(df)
 
     return combined_df.groupBy("day") \
         .agg(avg(col("trip_duration"))) \
