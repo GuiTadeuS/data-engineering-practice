@@ -1,21 +1,87 @@
 import logging
 import os
+import shutil
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Callable, List
 from zipfile import ZipFile
 from pyspark.sql import SparkSession, DataFrame
+from pyspark.sql.window import Window
 from pyspark.sql.functions import (col,
                                    avg,
                                    to_date,
-                                   unix_timestamp)
+                                   unix_timestamp,
+                                   month,
+                                   date_sub,
+                                   current_date,
+                                   desc,
+                                   row_number)
 
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s - %(levelname)s - %(message)s")
 
 
-REPORTS_DIRECTORY = str(Path(__file__).parent / "reports")
+REPORTS_DIRECTORY = Path(__file__).parent / "reports"
+
+
+def top_station_by_day(dfs: List[DataFrame]) -> DataFrame:
+    if not dfs:
+        logging.error("No dataframes found")
+        return
+
+    combined_df = None
+
+    for df in dfs:
+        if "start_time" in df.columns:
+            df = df.withColumnRenamed("start_time", "started_at")
+            df = df.withColumnRenamed("to_station_name", "end_station_name")
+
+        df = df.withColumn("date", to_date(col("started_at")))
+        df = df.select("date", "end_station_name")
+
+        df = df.filter(col("date") > date_sub(current_date(), 14))
+
+    if combined_df is None:
+        combined_df = df
+    else:
+        combined_df = combined_df.union(df)
+
+    df.groupBy("date", "end_station_name") \
+        .count() \
+        .withColumnRenamed("count", "trip_count")
+
+    window_spec = Window.partitionBy("date").orderBy(desc("trip_count"))
+    ranked_df = df.withColumn("station_rank", row_number().over(window_spec))
+    df = ranked_df.filter(col("station_rank") <= 3)
+
+    return df
+
+
+def popular_month_destination(dfs: List[DataFrame]) -> DataFrame:
+    if not dfs:
+        logging.error("No dataframes found")
+        return
+
+    combined_df = None
+
+    for df in dfs:
+        if "start_time" in df.columns:
+            df = df.withColumnRenamed("start_time", "started_at")
+            df = df.withColumnRenamed("to_station_name", "end_station_name")
+
+        df = df.withColumn("month",
+                           month(to_date(col("started_at"))))
+        df = df.select("month", "end_station_name")
+
+    if combined_df is None:
+        combined_df = df
+    else:
+        combined_df = combined_df.union(df)
+
+    return combined_df.groupBy("month", "end_station_name") \
+        .count() \
+        .withColumnRenamed("count", "trip_count")
 
 
 def trips_per_day(dfs: List[DataFrame]) -> DataFrame:
@@ -78,13 +144,15 @@ def average_trip_duration(dfs: List[DataFrame]) -> DataFrame:
 def process_dataframes(dfs: List[DataFrame]):
     output_report(dfs, average_trip_duration)
     output_report(dfs, trips_per_day)
+    output_report(dfs, popular_month_destination)
+    output_report(dfs, top_station_by_day)
 
 
 def output_report(dfs: List[DataFrame], processment_function: Callable):
     result_df: DataFrame = processment_function(dfs)
     if result_df:
         try:
-            output_dir = os.path.join(REPORTS_DIRECTORY,
+            output_dir = os.path.join(str(REPORTS_DIRECTORY),
                                       processment_function.__name__)
             logging.info(f"Attempting to write output to: {output_dir}")
 
@@ -133,6 +201,9 @@ def get_df_csv_from_zip(zip_file: ZipFile, filename, spark: SparkSession):
 
 def main():
     logging.info("Start")
+
+    if os.path.exists(str(REPORTS_DIRECTORY)):
+        shutil.rmtree(str(REPORTS_DIRECTORY))
 
     spark: SparkSession = SparkSession \
         .builder \
