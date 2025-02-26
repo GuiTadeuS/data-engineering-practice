@@ -9,6 +9,7 @@ from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.window import Window
 from pyspark.sql.functions import (col,
                                    avg,
+                                   count,
                                    to_date,
                                    unix_timestamp,
                                    month,
@@ -23,6 +24,27 @@ logging.basicConfig(level=logging.INFO,
 
 
 REPORTS_DIRECTORY = Path(__file__).parent / "reports"
+
+
+def top_shortest_longest(dfs: List[DataFrame]) -> DataFrame:
+    pass
+
+
+def time_spent_gender(dfs: List[DataFrame]) -> DataFrame:
+    if not dfs:
+        logging.error("No dataframes found")
+        return
+
+    for df in dfs:
+        try:
+            df = df.select("start_time", "end_time", "gender") \
+                    .filter(col("gender") != "")
+            df = df.withColumn("trip_duration",
+                               (unix_timestamp("end_time") - unix_timestamp(
+                                   "start_time")))
+            return df.groupBy("gender").agg(avg("trip_duration"))
+        except Exception:
+            continue
 
 
 def top_station_by_day(dfs: List[DataFrame]) -> DataFrame:
@@ -125,7 +147,9 @@ def average_trip_duration(dfs: List[DataFrame]) -> DataFrame:
         combined_df = df if combined_df is None else combined_df.union(df)
 
     return combined_df.groupBy("day") \
-        .agg(avg(col("trip_duration"))) \
+        .agg(
+            avg(col("trip_duration")).alias("avg_trip_duration"),
+            count("*").alias("trip_count")) \
         .orderBy("day")
 
 
@@ -134,6 +158,7 @@ def process_dataframes(dfs: List[DataFrame]):
     output_report(dfs, trips_per_day)
     output_report(dfs, popular_month_destination)
     output_report(dfs, top_station_by_day)
+    output_report(dfs, time_spent_gender)
 
 
 def output_report(dfs: List[DataFrame], processment_function: Callable):
