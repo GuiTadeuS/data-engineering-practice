@@ -27,7 +27,27 @@ REPORTS_DIRECTORY = Path(__file__).parent / "reports"
 
 
 def top_shortest_longest(dfs: List[DataFrame]) -> DataFrame:
-    pass
+    if not dfs:
+        logging.error("No dataframes found")
+        return
+
+    for df in dfs:
+        try:
+            df = df.select("start_time", "end_time", "birthyear")
+            df = df.withColumn("trip_duration",
+                               (unix_timestamp("end_time") - unix_timestamp(
+                                "start_time")))
+            df = df.filter(col("trip_duration") >= 0)
+            df = df.filter(col("birthyear").cast("double").isNotNull())
+
+            df = df.orderBy("trip_duration", ascending=False)
+            top_10 = df.limit(10)
+            df = df.orderBy("trip_duration")
+            bottom_10 = df.limit(10)
+
+            return top_10.union(bottom_10)
+        except Exception:
+            continue
 
 
 def time_spent_gender(dfs: List[DataFrame]) -> DataFrame:
@@ -159,6 +179,7 @@ def process_dataframes(dfs: List[DataFrame]):
     output_report(dfs, popular_month_destination)
     output_report(dfs, top_station_by_day)
     output_report(dfs, time_spent_gender)
+    output_report(dfs, top_shortest_longest)
 
 
 def output_report(dfs: List[DataFrame], processment_function: Callable):
