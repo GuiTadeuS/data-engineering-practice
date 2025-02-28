@@ -7,7 +7,7 @@ from typing import Callable
 from zipfile import ZipFile
 from pyspark.sql import SparkSession, DataFrame
 import pyspark.sql.functions as F
-
+from pyspark.sql.window import Window
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s - %(levelname)s - %(message)s")
@@ -17,12 +17,57 @@ DATA_DIRECTORY = Path(__file__).parent / "data"
 RESULT_DIRECTORY = Path(__file__).parent / "result"
 
 
-def process_datafame(df: DataFrame):
-    return df
+def process_datafame(df: DataFrame, csv_file_name: str):
+    try:
+        df = df.withColumn("source_file", F.lit(csv_file_name))
+
+        match = r"\d{4}-\d{2}-\d{2}"
+        df = df.withColumn("file_date",
+                           F.to_date(
+                               F.regexp_extract(F.col("source_file"),
+                                                match, 0)))
+        df = df.withColumn("brand",
+                           F.when(
+                               F.col("model").contains(" "),
+                               F.split(F.col("model"), " ")[0]
+                               ).otherwise("unknow"))
+
+        df = df.withColumn("primary_key",
+                           F.sha2(
+                               F.concat_ws("_",
+                                           F.col("serial_number"),
+                                           F.col("model")), 256))
+
+        capacity_bytes = (
+            df.select("capacity_bytes").distinct().orderBy("capacity_bytes")
+        )
+
+        window_spec = Window.orderBy(F.desc("capacity_bytes"))
+        capacity_bytes = capacity_bytes.withColumn("rank",
+                                                   F.dense_rank()
+                                                   .over(window_spec))
+        capacity_bytes = capacity_bytes.dropDuplicates(["rank"])
+
+        df = (
+            df.join(
+                capacity_bytes,
+                df["capacity_bytes"] == capacity_bytes["capacity_bytes"],
+                "inner",
+            )
+            .drop("capacity_bytes")
+            .drop("rank")
+        )
+
+        return df
+
+    except Exception as e:
+        logging.error(f"An error has occured while processing: {e}")
 
 
-def output_report(df: DataFrame, processment_function: Callable):
-    result_df: DataFrame = processment_function(df)
+def output_report(df: DataFrame,
+                  csv_file_name: str,
+                  processment_function: Callable):
+    result_df: DataFrame = processment_function(df, csv_file_name)
     if result_df:
         try:
             output_dir = os.path.join(str(RESULT_DIRECTORY),
@@ -103,7 +148,7 @@ def main():
             df = get_df_csv_from_zip(zip_file,
                                      zip_content.filename,
                                      spark)
-            output_report(df, process_datafame)
+            output_report(df, zip_content.filename, process_datafame)
 
     logging.info("End")
 
