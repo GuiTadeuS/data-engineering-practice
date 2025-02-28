@@ -217,7 +217,7 @@ def output_report(dfs: List[DataFrame], processment_function: Callable):
             logging.error(f"Failed to process and generate output: {e}")
             logging.error(f"Attempted to access file at: {output_dir}")
     else:
-        logging.error("The resulting DataFrame is empty or invalid.")
+        logging.error("The resulting DataFrame is empty or invalid")
 
 
 def get_df_csv_from_zip(zip_file: ZipFile, filename, spark: SparkSession):
