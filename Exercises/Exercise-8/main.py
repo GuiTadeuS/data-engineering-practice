@@ -64,7 +64,7 @@ db_schema = {
 
 def main():
     csv_file = os.path.join(DATA_DIRECTORY,
-                                     "Electric_Vehicle_Population_Data.csv")
+                            "Electric_Vehicle_Population_Data.csv")
     eletric_cars = duckdb.read_csv(csv_file, header=True)
 
     for query in SQLQueries:
